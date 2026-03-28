@@ -65,7 +65,7 @@ export class BootScene extends Phaser.Scene {
     // Create animations for both player types
     this.createAnimations('player');
     this.createAnimations('remote-player');
-    this.scene.start('LobbyScene');
+    this.scene.start('NameScene');
   }
 
   /** Draw a single character frame */

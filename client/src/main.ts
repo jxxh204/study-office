@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { NameScene } from './scenes/NameScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import { RoomScene } from './scenes/RoomScene';
 
@@ -20,7 +21,7 @@ const config: Phaser.Types.Core.GameConfig = {
     pixelArt: true,
     roundPixels: true,
   },
-  scene: [BootScene, LobbyScene, RoomScene],
+  scene: [BootScene, NameScene, LobbyScene, RoomScene],
 };
 
 new Phaser.Game(config);

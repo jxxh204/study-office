@@ -51,8 +51,8 @@ export class SocketManager {
     return this.socket?.id ?? '';
   }
 
-  joinRoom(roomId: string): void {
-    this.socket?.emit('join-room', { roomId });
+  joinRoom(roomId: string, nickname?: string): void {
+    this.socket?.emit('join-room', { roomId, nickname });
   }
 
   leaveRoom(roomId: string): void {

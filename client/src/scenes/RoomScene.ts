@@ -61,7 +61,9 @@ export class RoomScene extends Phaser.Scene {
     this.player = this.add.sprite(ROOM_W / 2, ROOM_H / 2, 'player', 1);
     this.player.play('player-idle-down');
 
-    this.nameLabel = this.add.text(ROOM_W / 2, ROOM_H / 2 - 32, 'You', {
+    // Get player nickname
+    const nickname = localStorage.getItem('playerNickname') || 'Player';
+    this.nameLabel = this.add.text(ROOM_W / 2, ROOM_H / 2 - 32, nickname, {
       fontSize: '12px', color: '#00b4d8', fontFamily: 'Arial',
     }).setOrigin(0.5);
 
@@ -99,7 +101,8 @@ export class RoomScene extends Phaser.Scene {
     try {
       this.socket.connect();
       this.setupSocketListeners();
-      this.socket.joinRoom(this.roomId);
+      const nickname = localStorage.getItem('playerNickname') || 'Player';
+      this.socket.joinRoom(this.roomId, nickname);
       this.webrtc = new WebRTCManager(this.socket);
     } catch (err) {
       console.warn('[RoomScene] Network init failed, running offline:', err);
