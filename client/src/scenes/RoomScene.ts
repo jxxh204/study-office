@@ -26,6 +26,7 @@ export class RoomScene extends Phaser.Scene {
   private remotePlayers: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private remoteLabels: Map<string, Phaser.GameObjects.Text> = new Map();
   private remoteDirs: Map<string, Direction> = new Map();
+  private remoteConnectionIndicators: Map<string, Phaser.GameObjects.Arc> = new Map();
   private socket!: SocketManager;
   private webrtc!: WebRTCManager;
   private joystick!: Joystick;
@@ -104,6 +105,11 @@ export class RoomScene extends Phaser.Scene {
       const nickname = localStorage.getItem('playerNickname') || 'Player';
       this.socket.joinRoom(this.roomId, nickname);
       this.webrtc = new WebRTCManager(this.socket);
+      
+      // Set up connection state callback
+      this.webrtc.setConnectionStateCallback((peerId, state) => {
+        this.updateConnectionIndicator(peerId, state);
+      });
     } catch (err) {
       console.warn('[RoomScene] Network init failed, running offline:', err);
     }
@@ -158,6 +164,32 @@ export class RoomScene extends Phaser.Scene {
       fontSize: '11px', color: '#e63946', fontFamily: 'Arial',
     }).setOrigin(0.5);
     this.remoteLabels.set(id, label);
+
+    // Connection state indicator (dot)
+    const indicator = this.add.circle(x + 20, y - 28, 4, 0xffff00, 1); // Yellow = connecting
+    this.remoteConnectionIndicators.set(id, indicator);
+  }
+
+  private updateConnectionIndicator(peerId: string, state: RTCPeerConnectionState): void {
+    const indicator = this.remoteConnectionIndicators.get(peerId);
+    if (!indicator) return;
+
+    switch (state) {
+      case 'connected':
+        indicator.setFillStyle(0x00ff00, 1); // Green
+        break;
+      case 'connecting':
+      case 'new':
+        indicator.setFillStyle(0xffff00, 1); // Yellow
+        break;
+      case 'failed':
+      case 'disconnected':
+        indicator.setFillStyle(0xff0000, 1); // Red
+        break;
+      case 'closed':
+        indicator.setVisible(false);
+        break;
+    }
   }
 
   private removeRemotePlayer(id: string): void {
@@ -165,6 +197,8 @@ export class RoomScene extends Phaser.Scene {
     this.remotePlayers.delete(id);
     this.remoteLabels.get(id)?.destroy();
     this.remoteLabels.delete(id);
+    this.remoteConnectionIndicators.get(id)?.destroy();
+    this.remoteConnectionIndicators.delete(id);
     this.remoteDirs.delete(id);
   }
 
@@ -194,6 +228,9 @@ export class RoomScene extends Phaser.Scene {
 
     const label = this.remoteLabels.get(id);
     if (label) { label.x = x; label.y = y - 32; }
+    
+    const indicator = this.remoteConnectionIndicators.get(id);
+    if (indicator) { indicator.x = x + 20; indicator.y = y - 28; }
   }
 
   private getDirection(dx: number, dy: number): Direction {
@@ -267,6 +304,8 @@ export class RoomScene extends Phaser.Scene {
     this.remotePlayers.clear();
     this.remoteLabels.forEach((l) => l.destroy());
     this.remoteLabels.clear();
+    this.remoteConnectionIndicators.forEach((i) => i.destroy());
+    this.remoteConnectionIndicators.clear();
     this.remoteDirs.clear();
     this.joystick.destroy();
     this.micButton.destroy();

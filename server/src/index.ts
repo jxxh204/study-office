@@ -6,10 +6,33 @@ import { SignalingHandler } from './SignalingHandler';
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS configuration with environment variable support
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://client-jxxh204s-projects.vercel.app',
+      'https://client-git-main-jxxh204s-projects.vercel.app',
+    ];
+
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000', 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or Postman)
+      if (!origin) return callback(null, true);
+      
+      // Check if the origin is allowed
+      if (allowedOrigins.includes(origin) || allowedOrigins.some(allowed => origin.includes(allowed))) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -59,4 +82,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`[Server] Listening on http://localhost:${PORT}`);
+  console.log(`[Server] Allowed CORS origins:`, allowedOrigins);
 });
