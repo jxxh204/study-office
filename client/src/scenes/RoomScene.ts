@@ -11,22 +11,28 @@ const ROOM_H = 800;
 interface PlayerData {
   x: number;
   y: number;
+  dir?: string;
 }
+
+type Direction = 'down' | 'left' | 'right' | 'up';
 
 export class RoomScene extends Phaser.Scene {
   private roomId!: string;
   private roomName!: string;
-  private player!: Phaser.GameObjects.Image;
+  private player!: Phaser.GameObjects.Sprite;
+  private playerDir: Direction = 'down';
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
-  private remotePlayers: Map<string, Phaser.GameObjects.Image> = new Map();
+  private remotePlayers: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private remoteLabels: Map<string, Phaser.GameObjects.Text> = new Map();
+  private remoteDirs: Map<string, Direction> = new Map();
   private socket!: SocketManager;
   private webrtc!: WebRTCManager;
   private joystick!: Joystick;
   private micButton!: MicButton;
   private lastSentX = 0;
   private lastSentY = 0;
+  private lastSentDir: Direction = 'down';
   private nameLabel!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -51,9 +57,11 @@ export class RoomScene extends Phaser.Scene {
       .setStrokeStyle(3, 0x0f3460, 1)
       .setFillStyle(0x000000, 0);
 
-    // Player
-    this.player = this.add.image(ROOM_W / 2, ROOM_H / 2, 'player');
-    this.nameLabel = this.add.text(ROOM_W / 2, ROOM_H / 2 - 28, 'You', {
+    // Player sprite
+    this.player = this.add.sprite(ROOM_W / 2, ROOM_H / 2, 'player', 1);
+    this.player.play('player-idle-down');
+
+    this.nameLabel = this.add.text(ROOM_W / 2, ROOM_H / 2 - 32, 'You', {
       fontSize: '12px', color: '#00b4d8', fontFamily: 'Arial',
     }).setOrigin(0.5);
 
@@ -74,8 +82,8 @@ export class RoomScene extends Phaser.Scene {
     this.joystick = new Joystick(this);
     this.micButton = new MicButton(this);
 
-    // Room title (fixed UI)
-    const titleText = this.add.text(this.scale.width / 2, 16, this.roomName, {
+    // Room title
+    this.add.text(this.scale.width / 2, 16, this.roomName, {
       fontSize: '18px', color: '#ffffff', fontFamily: 'Arial',
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
@@ -86,7 +94,7 @@ export class RoomScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(100).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => this.leaveRoom());
 
-    // Network (graceful — works offline too)
+    // Network
     this.socket = SocketManager.getInstance();
     try {
       this.socket.connect();
@@ -97,14 +105,12 @@ export class RoomScene extends Phaser.Scene {
       console.warn('[RoomScene] Network init failed, running offline:', err);
     }
 
-    // Cleanup on scene shutdown
     this.events.on('shutdown', () => this.cleanup());
   }
 
   private setupSocketListeners(): void {
     this.socket.on('player-join', (data: { socketId: string }) => {
       this.addRemotePlayer(data.socketId);
-      // Initiator sends offer to new player
       this.webrtc.createOffer(data.socketId);
     });
 
@@ -113,8 +119,8 @@ export class RoomScene extends Phaser.Scene {
       this.webrtc.closePeer(data.socketId);
     });
 
-    this.socket.on('player-move', (data: { socketId: string; x: number; y: number }) => {
-      this.updateRemotePlayer(data.socketId, data.x, data.y);
+    this.socket.on('player-move', (data: { socketId: string; x: number; y: number; dir?: string }) => {
+      this.updateRemotePlayer(data.socketId, data.x, data.y, (data.dir as Direction) || 'down');
     });
 
     this.socket.on('room-state', (data: { players: Record<string, PlayerData> }) => {
@@ -125,7 +131,6 @@ export class RoomScene extends Phaser.Scene {
       });
     });
 
-    // WebRTC signaling
     this.socket.on('webrtc-offer', async (data: { from: string; offer: RTCSessionDescriptionInit }) => {
       await this.webrtc.handleOffer(data.from, data.offer);
     });
@@ -141,9 +146,12 @@ export class RoomScene extends Phaser.Scene {
 
   private addRemotePlayer(id: string, x = ROOM_W / 2, y = ROOM_H / 2): void {
     if (this.remotePlayers.has(id)) return;
-    const sprite = this.add.image(x, y, 'remote-player');
+    const sprite = this.add.sprite(x, y, 'remote-player', 1);
+    sprite.play('remote-player-idle-down');
     this.remotePlayers.set(id, sprite);
-    const label = this.add.text(x, y - 28, id.slice(0, 6), {
+    this.remoteDirs.set(id, 'down');
+
+    const label = this.add.text(x, y - 32, id.slice(0, 6), {
       fontSize: '11px', color: '#e63946', fontFamily: 'Arial',
     }).setOrigin(0.5);
     this.remoteLabels.set(id, label);
@@ -154,35 +162,60 @@ export class RoomScene extends Phaser.Scene {
     this.remotePlayers.delete(id);
     this.remoteLabels.get(id)?.destroy();
     this.remoteLabels.delete(id);
+    this.remoteDirs.delete(id);
   }
 
-  private updateRemotePlayer(id: string, x: number, y: number): void {
+  private updateRemotePlayer(id: string, x: number, y: number, dir: Direction): void {
     if (!this.remotePlayers.has(id)) this.addRemotePlayer(id, x, y);
     const sprite = this.remotePlayers.get(id)!;
+    const prevX = sprite.x;
+    const prevY = sprite.y;
     sprite.x = x;
     sprite.y = y;
+
+    const oldDir = this.remoteDirs.get(id) || 'down';
+    const isMoving = (x !== prevX || y !== prevY);
+
+    if (isMoving) {
+      const animKey = `remote-player-walk-${dir}`;
+      if (sprite.anims.currentAnim?.key !== animKey) {
+        sprite.play(animKey);
+      }
+    } else {
+      const idleKey = `remote-player-idle-${dir}`;
+      if (sprite.anims.currentAnim?.key !== idleKey) {
+        sprite.play(idleKey);
+      }
+    }
+    this.remoteDirs.set(id, dir);
+
     const label = this.remoteLabels.get(id);
-    if (label) { label.x = x; label.y = y - 28; }
+    if (label) { label.x = x; label.y = y - 32; }
+  }
+
+  private getDirection(dx: number, dy: number): Direction {
+    // Pick dominant axis
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return dx < 0 ? 'left' : 'right';
+    }
+    return dy < 0 ? 'up' : 'down';
   }
 
   update(_time: number, delta: number): void {
     let dx = 0;
     let dy = 0;
 
-    // Keyboard
     if (this.cursors.left.isDown || this.wasd.A.isDown) dx -= 1;
     if (this.cursors.right.isDown || this.wasd.D.isDown) dx += 1;
     if (this.cursors.up.isDown || this.wasd.W.isDown) dy -= 1;
     if (this.cursors.down.isDown || this.wasd.S.isDown) dy += 1;
 
-    // Joystick override
     const joy = this.joystick.getDirection();
     if (Math.abs(joy.dx) > 0.1 || Math.abs(joy.dy) > 0.1) {
       dx = joy.dx;
       dy = joy.dy;
     }
 
-    // Normalize diagonal
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len > 0) {
       dx = dx / len;
@@ -193,14 +226,30 @@ export class RoomScene extends Phaser.Scene {
     this.player.x = Phaser.Math.Clamp(this.player.x + dx * SPEED * dt, 20, ROOM_W - 20);
     this.player.y = Phaser.Math.Clamp(this.player.y + dy * SPEED * dt, 20, ROOM_H - 20);
     this.nameLabel.x = this.player.x;
-    this.nameLabel.y = this.player.y - 28;
+    this.nameLabel.y = this.player.y - 32;
 
-    // Send position if changed
+    // Animation
+    const isMoving = len > 0;
+    if (isMoving) {
+      this.playerDir = this.getDirection(dx, dy);
+      const walkKey = `player-walk-${this.playerDir}`;
+      if (this.player.anims.currentAnim?.key !== walkKey) {
+        this.player.play(walkKey);
+      }
+    } else {
+      const idleKey = `player-idle-${this.playerDir}`;
+      if (this.player.anims.currentAnim?.key !== idleKey) {
+        this.player.play(idleKey);
+      }
+    }
+
+    // Send position
     const px = Math.round(this.player.x);
     const py = Math.round(this.player.y);
-    if (px !== this.lastSentX || py !== this.lastSentY) {
+    if (px !== this.lastSentX || py !== this.lastSentY || this.playerDir !== this.lastSentDir) {
       this.lastSentX = px;
       this.lastSentY = py;
+      this.lastSentDir = this.playerDir;
       if (this.socket.isConnected()) this.socket.sendMove(px, py);
     }
   }
@@ -215,6 +264,7 @@ export class RoomScene extends Phaser.Scene {
     this.remotePlayers.clear();
     this.remoteLabels.forEach((l) => l.destroy());
     this.remoteLabels.clear();
+    this.remoteDirs.clear();
     this.joystick.destroy();
     this.micButton.destroy();
     this.webrtc?.closeAll();
