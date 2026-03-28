@@ -5,6 +5,7 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
 export class SocketManager {
   private static instance: SocketManager;
   private socket: Socket | null = null;
+  private connected = false;
 
   private constructor() {}
 
@@ -17,16 +18,33 @@ export class SocketManager {
 
   connect(): void {
     if (this.socket?.connected) return;
-    this.socket = io(SERVER_URL, {
-      transports: ['websocket'],
-      autoConnect: true,
-    });
-    this.socket.on('connect', () => {
-      console.log('[Socket] Connected:', this.socket!.id);
-    });
-    this.socket.on('disconnect', (reason) => {
-      console.log('[Socket] Disconnected:', reason);
-    });
+    try {
+      this.socket = io(SERVER_URL, {
+        transports: ['websocket'],
+        autoConnect: true,
+        reconnectionAttempts: 5,
+        timeout: 5000,
+      });
+      this.socket.on('connect', () => {
+        this.connected = true;
+        console.log('[Socket] Connected:', this.socket!.id);
+      });
+      this.socket.on('disconnect', (reason) => {
+        this.connected = false;
+        console.log('[Socket] Disconnected:', reason);
+      });
+      this.socket.on('connect_error', (err) => {
+        this.connected = false;
+        console.warn('[Socket] Connection failed (server may be offline):', err.message);
+      });
+    } catch (err) {
+      console.warn('[Socket] Failed to initialize socket:', err);
+      this.socket = null;
+    }
+  }
+
+  isConnected(): boolean {
+    return this.connected;
   }
 
   getSocketId(): string {
@@ -62,7 +80,6 @@ export class SocketManager {
   }
 
   removeAllListeners(): void {
-    // Remove game-specific listeners but keep connection ones
     const events = ['player-join', 'player-leave', 'player-move', 'room-state',
       'webrtc-offer', 'webrtc-answer', 'webrtc-ice-candidate'];
     events.forEach((e) => this.socket?.off(e));
@@ -71,5 +88,6 @@ export class SocketManager {
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
+    this.connected = false;
   }
 }

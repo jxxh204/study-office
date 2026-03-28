@@ -86,14 +86,16 @@ export class RoomScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(100).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => this.leaveRoom());
 
-    // Network
+    // Network (graceful — works offline too)
     this.socket = SocketManager.getInstance();
-    this.socket.connect();
-    this.setupSocketListeners();
-    this.socket.joinRoom(this.roomId);
-
-    // WebRTC
-    this.webrtc = new WebRTCManager(this.socket);
+    try {
+      this.socket.connect();
+      this.setupSocketListeners();
+      this.socket.joinRoom(this.roomId);
+      this.webrtc = new WebRTCManager(this.socket);
+    } catch (err) {
+      console.warn('[RoomScene] Network init failed, running offline:', err);
+    }
 
     // Cleanup on scene shutdown
     this.events.on('shutdown', () => this.cleanup());
@@ -199,7 +201,7 @@ export class RoomScene extends Phaser.Scene {
     if (px !== this.lastSentX || py !== this.lastSentY) {
       this.lastSentX = px;
       this.lastSentY = py;
-      this.socket.sendMove(px, py);
+      if (this.socket.isConnected()) this.socket.sendMove(px, py);
     }
   }
 
@@ -215,7 +217,7 @@ export class RoomScene extends Phaser.Scene {
     this.remoteLabels.clear();
     this.joystick.destroy();
     this.micButton.destroy();
-    this.webrtc.closeAll();
-    this.socket.removeAllListeners();
+    this.webrtc?.closeAll();
+    this.socket?.removeAllListeners();
   }
 }
