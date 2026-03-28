@@ -13,6 +13,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   : [
       'http://localhost:3000',
       'http://localhost:5173',
+      'https://client-xi-ebon-13.vercel.app',
       'https://client-jxxh204s-projects.vercel.app',
       'https://client-git-main-jxxh204s-projects.vercel.app',
     ];

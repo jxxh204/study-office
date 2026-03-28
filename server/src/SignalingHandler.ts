@@ -3,7 +3,7 @@ import { RoomManager } from './RoomManager';
 
 export class SignalingHandler {
   static register(socket: Socket, roomManager: RoomManager): void {
-    socket.on('webrtc-offer', (data: { target: string; offer: RTCSessionDescriptionInit }) => {
+    socket.on('webrtc-offer', (data: { target: string; offer: any }) => {
       if (!roomManager.isInSameRoom(socket.id, data.target)) return;
       socket.to(data.target).emit('webrtc-offer', {
         from: socket.id,
@@ -11,7 +11,7 @@ export class SignalingHandler {
       });
     });
 
-    socket.on('webrtc-answer', (data: { target: string; answer: RTCSessionDescriptionInit }) => {
+    socket.on('webrtc-answer', (data: { target: string; answer: any }) => {
       if (!roomManager.isInSameRoom(socket.id, data.target)) return;
       socket.to(data.target).emit('webrtc-answer', {
         from: socket.id,
@@ -19,7 +19,7 @@ export class SignalingHandler {
       });
     });
 
-    socket.on('webrtc-ice-candidate', (data: { target: string; candidate: RTCIceCandidateInit }) => {
+    socket.on('webrtc-ice-candidate', (data: { target: string; candidate: any }) => {
       if (!roomManager.isInSameRoom(socket.id, data.target)) return;
       socket.to(data.target).emit('webrtc-ice-candidate', {
         from: socket.id,
