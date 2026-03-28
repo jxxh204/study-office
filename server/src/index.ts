@@ -15,15 +15,30 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager();
 
+// Broadcast room stats every 5 seconds
+setInterval(() => {
+  const stats = roomManager.getRoomStats();
+  roomManager.getAllSockets().forEach((socket) => {
+    socket.emit('room-stats', stats);
+  });
+}, 5000);
+
 io.on('connection', (socket) => {
   console.log(`[Server] Connected: ${socket.id}`);
 
+  // Send room stats immediately on connect
+  socket.emit('room-stats', roomManager.getRoomStats());
+
   socket.on('join-room', ({ roomId }: { roomId: string }) => {
     roomManager.join(socket, roomId);
+    // Broadcast updated stats
+    io.emit('room-stats', roomManager.getRoomStats());
   });
 
   socket.on('leave-room', ({ roomId }: { roomId: string }) => {
     roomManager.leave(socket, roomId);
+    // Broadcast updated stats
+    io.emit('room-stats', roomManager.getRoomStats());
   });
 
   socket.on('player-move', ({ x, y }: { x: number; y: number }) => {
@@ -36,6 +51,8 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`[Server] Disconnected: ${socket.id}`);
     roomManager.disconnectAll(socket);
+    // Broadcast updated stats
+    io.emit('room-stats', roomManager.getRoomStats());
   });
 });
 

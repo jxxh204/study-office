@@ -96,4 +96,16 @@ export class RoomManager {
     const r2 = this.getRoomForSocket(id2);
     return r1 !== null && r1 === r2;
   }
+
+  getRoomStats(): Record<string, number> {
+    const stats: Record<string, number> = {};
+    this.rooms.forEach((playerSet, roomId) => {
+      stats[roomId] = playerSet.size;
+    });
+    return stats;
+  }
+
+  getAllSockets(): Socket[] {
+    return Array.from(this.sockets.values());
+  }
 }
